@@ -1,0 +1,7 @@
+print("josh is a gay")
+print("josh is a gay")
+print("josh is a gay")  
+print("josh is a gay")  
+print("josh is a gay")  
+print("josh is a gay")  
+print("josh is a gay")
