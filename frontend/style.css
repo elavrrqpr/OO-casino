@@ -1,0 +1,56 @@
+/* Gartic 視覺核心：淺色底、圓角、粗邊框 */
+body {
+    background-color: #e5e5e5; /* Gartic 經典淡灰色背景 */
+    font-family: 'Arial', sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+}
+
+/* 遊戲容器 */
+#game-container {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 8px 0 #bbb; /* 下沉陰影感 */
+    width: 90%;
+    max-width: 800px;
+    padding: 20px;
+    text-align: center;
+}
+
+/* 玩家卡片（頭像框） */
+.player-slot {
+    display: inline-block;
+    width: 80px;
+    margin: 10px;
+    padding: 5px;
+    background: #fff;
+    border: 2px solid #ddd;
+    border-radius: 10px;
+    position: relative;
+}
+
+/* 輪到該玩家時的高亮（倒數計時條感） */
+.player-slot.active {
+    border: 4px solid #ffca06; /* Gartic 黃 */
+    box-shadow: 0 0 10px rgba(255, 202, 6, 0.8);
+}
+
+/* Gartic 風格按鈕 */
+.btn-poker {
+    background: #5cb85c;
+    color: white;
+    border: none;
+    border-bottom: 4px solid #4cae4c; /* 3D 扁平感 */
+    padding: 10px 20px;
+    font-weight: bold;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.btn-poker:active {
+    border-bottom: 0;
+    transform: translateY(4px);
+}
