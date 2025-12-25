@@ -1,5 +1,5 @@
 const BaseGame = require('./BaseGame');
-const Deck = require('./Deck');
+const Deck = require('.deck');
 const HandEvaluator = require('./HandEvaluator');
 
 class PokerGame extends BaseGame {
