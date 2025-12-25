@@ -193,7 +193,7 @@ class PokerGame extends BaseGame {
         for (let i = 0; i < this.players.length; i++) {
             nextIndex = (nextIndex + 1) % this.players.length;
             // 只要不是 SIT_OUT 就算 Active (包含 FOLDED, ALLIN 在這局都算佔位)
-            if (this.players[nextIndex].status !== 'SIT_OUT') {
+            if (this.players[nextIndex].status !== 'SIT_OUT' && this.players[nextIndex].status !== 'WAITING') {
                 return nextIndex;
             }
         }
@@ -244,7 +244,8 @@ class PokerGame extends BaseGame {
             // 跳過已棄牌或 All-in 的玩家
             (this.players[this.currentTurnIndex].status === 'FOLDED' || 
              this.players[this.currentTurnIndex].status === 'ALLIN' ||
-             this.players[this.currentTurnIndex].status === 'SIT_OUT') && 
+             this.players[this.currentTurnIndex].status === 'SIT_OUT' ||
+             this.players[this.currentTurnIndex].status === 'WAITING') && 
              loopCount < this.players.length
         );
         this._updateTurnStatus();
@@ -336,7 +337,7 @@ class PokerGame extends BaseGame {
 
     // 檢查是否有贏家 (剩一人)
     _checkWinByFold() {
-        const activePlayers = this.players.filter(p => p.status !== 'FOLDED' && p.status !== 'SIT_OUT');
+        const activePlayers = this.players.filter(p => p.status !== 'FOLDED' && p.status !== 'SIT_OUT' && p.status !== 'WAITING');
         if (activePlayers.length === 1) {
             this.endGame(activePlayers[0]); // 傳入贏家
             return true;
