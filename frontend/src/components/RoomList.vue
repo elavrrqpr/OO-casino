@@ -178,6 +178,7 @@ onUnmounted(() => {
   flex: 1; overflow-y: auto;
   display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 15px; padding: 5px;
+  position: relative;
 }
 
 /* 房間卡片 */
@@ -202,7 +203,20 @@ onUnmounted(() => {
     border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: auto;
 }
 
-.empty-msg { width: 100%; text-align: center; color: #888; font-size: 1.2rem; margin-top: 50px; }
+/* ▼▼▼ 【修改】成這樣 ▼▼▼ */
+.empty-msg {
+  position: absolute;      /* 絕對定位，無視網格 */
+  top: 50%;                /* 頂部推到 50% */
+  left: 50%;               /* 左邊推到 50% */
+  transform: translate(-50%, -50%); /* 修正自身寬高的偏移，達成完美正中心 */
+  
+  width: 100%;             /* 寬度全滿，避免文字換行太醜 */
+  text-align: center;      /* 文字置中 */
+  color: #888; 
+  font-size: 1.2rem; 
+  font-weight: bold;
+  pointer-events: none;    /* (選用) 讓滑鼠可以直接穿透，不擋到後面的操作 */
+}
 
 /* 底部創建按鈕 */
 .footer-bar { margin-top: 20px; display: flex; justify-content: center; }
