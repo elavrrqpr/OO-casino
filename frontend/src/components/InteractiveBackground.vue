@@ -134,7 +134,7 @@ onUnmounted(() => {
   width: 100%; height: 100%;
   
   /* 你的圖片 */
-  background-image: url('/poker.webp'); 
+  background-image: url('/poker.png'); 
   background-repeat: repeat;
   background-size: 400px;
   

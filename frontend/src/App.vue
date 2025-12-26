@@ -1,24 +1,27 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import Lobby from './components/Lobby.vue';
-import RoomSetup from './components/RoomSetup.vue';
 import PokerTable from './components/PokerTable.vue';
 import socket from './services/socket';
-
-// 1. 引入背景元件
+// 引入 RoomList
+import RoomList from './components/RoomList.vue';
 import InteractiveBackground from './components/InteractiveBackground.vue';
 
-// 2. 狀態機 (LOBBY -> SETUP -> PLAYING)
+// 狀態機 (LOBBY -> ROOM_LIST -> PLAYING)
 const currentView = ref('LOBBY');
 const roomData = ref(null);
 
 // 3. 監聽後端數據
 onMounted(() => {
+  // 監聽房間更新
   socket.on('roomUpdated', (data) => {
     roomData.value = data;
-    if (data.gameState === 'PLAYING' && currentView.value === 'LOBBY') {
-       // 選擇性邏輯
-    }
+  });
+
+  // ▼▼▼ 【修正重點】監聽加入成功訊號 ▼▼▼
+  // 只有收到這個，才會切換畫面到遊戲桌
+  socket.on('joinSuccess', () => {
+    currentView.value = 'PLAYING';
   });
 
   socket.on('errorMsg', (msg) => alert(msg));
@@ -29,23 +32,37 @@ const selectGame = (type) => {
   if (type === 'poker') {
     const name = sessionStorage.getItem('player_nickname');
     if (name) {
-       console.log("偵測到暱稱，直接加入房間:", name);
-       socket.emit('joinRoom', { roomId: 'poker_table_1', nickname: name });
-       currentView.value = 'PLAYING'; 
+       currentView.value = 'ROOM_LIST'; 
     } else {
-       currentView.value = 'SETUP';
+       // 如果沒名字，理論上應該擋在 Lobby，這裡只是防呆
+       alert("請先輸入暱稱");
     }
   }
 };
 
-const joinRoom = () => {
-  currentView.value = 'PLAYING';
+const handleJoinRoom = ({ roomId, password }) => {
+    const nickname = sessionStorage.getItem('player_nickname');
+    const avatar = sessionStorage.getItem('player_avatar');
+
+    // 發送加入請求
+    socket.emit('joinRoom', { 
+        roomId, 
+        nickname, 
+        avatar: avatar || '/avatars/1.jpg',
+        password 
+    });
 };
 
-// 【新增】返回大廳的函式
+// 從房間列表返回大廳
 const backToLobby = () => {
-  // 如果後端需要知道玩家離開，可以在這裡加 socket.emit('leaveRoom');
   currentView.value = 'LOBBY';
+};
+
+// 從遊戲桌離開 (通常是回到房間列表比較合理，看你需求)
+const leaveGame = () => {
+  socket.emit('leaveRoom'); // 通知後端離開
+  currentView.value = 'ROOM_LIST'; // 回到房間列表
+  roomData.value = null;
 };
 </script>
 
@@ -61,15 +78,16 @@ const backToLobby = () => {
         @select="selectGame" 
       />
       
-      <RoomSetup 
-        v-else-if="currentView === 'SETUP'" 
-        @join="joinRoom" 
+      <RoomList 
+        v-else-if="currentView === 'ROOM_LIST'"
+        @join="handleJoinRoom"
+        @back="backToLobby" 
       />
       
       <PokerTable 
         v-else-if="currentView === 'PLAYING'" 
         :room-data="roomData" 
-        @leave="backToLobby"
+        @leave="leaveGame"
       />
 
     </transition>

@@ -1,16 +1,17 @@
 const BaseGame = require('./BaseGame');
-const Deck = require('.deck');
+const Deck = require('./deck');
 const HandEvaluator = require('./HandEvaluator');
 
 class PokerGame extends BaseGame {
-    constructor(roomId) {
+    constructor(roomId, roomName = '德州撲克', password = '') {
         super(roomId, 'poker');
         
         // --- 遊戲設定 ---
         this.minPlayers = 2;
         this.smallBlind = 100; // 小盲注金額
         this.bigBlind = 200;   // 大盲注金額
-
+        this.roomName = roomName; // 新增：房間名稱
+        this.password = password; // 新增：房間密碼
         // --- 遊戲狀態 ---
         this.deck = new Deck();
         this.communityCards = [];
@@ -19,15 +20,30 @@ class PokerGame extends BaseGame {
         this.dealerIndex = -1;     // 莊家位置 (Button)
         this.currentTurnIndex = 0; // 當前輪到誰 (index)
         this.lastRoundWinners = [];
-        
+        this.minPlayers = 2;
+        this.maxPlayers = 6;
         // 階段: 'LOBBY', 'PREFLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN'
         this.gameStage = 'LOBBY'; 
         this.hostId = null;
     }
+    //這是一個 getter，讓外部可以用 game.currentTurnPlayerId 取得當前玩家 ID
+    get currentTurnPlayerId() {
+        if (!this.players || this.players.length === 0) return null;
+        const player = this.players[this.currentTurnIndex];
+        return player ? player.id : null;
+    }
 
     addPlayer(player) {
+        //  新增人數檢查 
+        if (this.players.length >= 6) {
+            console.log(`房間 ${this.roomId} 已滿，拒絕 ${player.name} 加入`);
+            return false; 
+        }
+        // ▲▲▲ ▲▲▲
+
         if (this.players.length === 0) this.hostId = player.id;
         super.addPlayer(player);
+        return true;
     }
 
     manualStart(requestPlayerId) {
@@ -252,29 +268,30 @@ class PokerGame extends BaseGame {
     }
 
     // 檢查這一輪下注圈是否結束
+    // --- 修正後的 _isRoundComplete ---
     _isRoundComplete() {
-        // 條件1: 所有「活躍且非 All-in」的玩家，下注金額都等於 currentBet
-        // 條件2: 所有人都已經表態過 (這裡簡化邏輯：用 lastAction 變數或 flag 追蹤，為了教學先省略複雜的 flag)
-        // 簡易版判斷：如果每個人都 (Check/Call/Fold/Allin) 且金額一致
-        
-        // 找出還活著且還有籌碼的人
-        const activePlayers = this.players.filter(p => p.status === 'ACTIVE');
-        
-        // 如果沒人活著 (都 All-in)，直接結束
+        // 1. 找出所有「還活著」且「沒有 All-in」的玩家
+        // (All-in 的玩家不需要再補錢，也不需要再行動，所以不參與判斷)
+        const activePlayers = this.players.filter(p => 
+            p.status !== 'FOLDED' && 
+            p.status !== 'SIT_OUT' && 
+            p.status !== 'WAITING' &&
+            p.status !== 'ALLIN'
+        );
+
+        // 如果場上沒剩下任何可行動的玩家 (例如大家都 All-in 或剩一人)，直接結束這輪
         if (activePlayers.length === 0) return true;
 
-        // 檢查是否所有活著的人注碼都一樣，且等於 currentBet
+        // 2. 條件一：注額平齊
+        // 檢查是否每個人的 roundBet 都等於目前的 currentBet
         const isBetMatched = activePlayers.every(p => p.roundBet === this.currentBet);
-        
-        // 注意：這裡有一個 Bug，如果是開局大盲，大家 Check 一圈回來，這裡需要更嚴謹的「已行動」標記
-        // 為了讓 Code 能跑，我們假設：如果輪到的人 roundBet 已經等於 currentBet 且不是 Raise 狀態，則結束
-        // (實際專案建議每個 Player 加一個 'hasActed' 屬性)
+
+        // 3. 條件二：皆已表態
+        // 檢查是否每個人都已經做過動作 (hasActed)
+        // 這很重要！例如大盲在 Preflop 雖然注額跟 currentBet 一樣(被強制下注)，但他還沒說話(Check/Raise)，所以不能結束
         const isEveryoneActed = activePlayers.every(p => p.hasActed);
-        
-        // 暫時用簡易版：如果當前這回合結束時，下一家的注碼已經齊平，則進入下一階段 (這是不精確的，但適合初學)
-        // 正確作法：在 nextTurn 前先檢查 `hasEveryoneActed && betsEqual`
-        
-        return isBetMatched && isEveryoneActed; 
+
+        return isBetMatched && isEveryoneActed;
     }
     
     // 簡易輔助：是否這輪大家都做過決定了 (需要配合額外屬性，這裡先回傳 false 讓遊戲能跑動)
@@ -290,18 +307,17 @@ class PokerGame extends BaseGame {
 
     // --- 4. 階段推進 (Preflop -> Flop -> Turn -> River) ---
     nextStage() {
-        // 重置每個人的 roundBet，準備下一輪喊價
+        // 1. 重置每個人的下注狀態
         this.players.forEach(p => { 
             p.roundBet = 0; 
-            p.hasActed = false; // 準備下一輪
+            p.hasActed = false; 
         });
         this.currentBet = 0;
 
-        // 狀態機切換
+        // 2. 切換階段
         switch (this.gameStage) {
             case 'PREFLOP':
                 this.gameStage = 'FLOP';
-                // 前端能看到的公用牌：前 3 張
                 break;
             case 'FLOP':
                 this.gameStage = 'TURN';
@@ -312,19 +328,33 @@ class PokerGame extends BaseGame {
             case 'RIVER':
                 this.gameStage = 'SHOWDOWN';
                 this.endGame(); // 結算
-                return;
+                return; // 結束函式，不再往下跑
         }
 
-        // 新階段從小盲位開始 (Dealer 的下一位)
-        // 但如果小盲 Fold/Allin 了，要往後找
+        // 3. 設定新階段的起始玩家 (從小盲位開始找)
         this.currentTurnIndex = this._findNextActivePlayer(this.dealerIndex);
-        // 確保起始人不是 Folded
+        
+        // 確保起始人是能行動的 (ACTIVE)
+        // 如果這個人是 ALLIN 或 FOLDED，就換下一個
         if (this.players[this.currentTurnIndex].status !== 'ACTIVE') {
             this.nextTurn();
         }
         
         this._updateTurnStatus();
         console.log(`--- 進入階段: ${this.gameStage} ---`);
+
+        // ▼▼▼ 【新增】All-in 自動導航邏輯 ▼▼▼
+        // 計算現在還有幾個人是「可以行動」的 (狀態是 ACTIVE)
+        // ALLIN 的人不算，FOLDED 的人也不算
+        const activePlayersCount = this.players.filter(p => p.status === 'ACTIVE').length;
+
+        // 如果剩下能行動的人少於 2 人 (代表其他人全 All-in 了，或者只剩 1 個活人 vs All-in 怪)
+        // 那就沒有繼續下注的必要，直接遞迴呼叫自己，開下一張牌！
+        if (activePlayersCount < 2) {
+            console.log("⚡ 場上無人可加注 (All-in)，自動快轉至下一階段...");
+            this.nextStage(); 
+        }
+        // ▲▲▲ ▲▲▲
     }
 
     // 回傳給前端顯示用的公用牌
@@ -373,9 +403,9 @@ class PokerGame extends BaseGame {
         // --- 分配獎金 (處理 Split Pot) ---
         if (winningHands.length > 0) {
             // 簡單平分邏輯 (除不盡的餘數通常給位置最靠前的，這裡先忽略餘數)
-            const share = Math.floor(this.pot / winningPlayers.length);
+            const share = Math.floor(this.pot / winningHands.length);
             
-            winningPlayers.forEach(hand => {
+            winningHands.forEach(hand => {
                 const p = hand.originalPlayer;
                 p.chips += share;
                 
