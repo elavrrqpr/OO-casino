@@ -394,6 +394,16 @@ class PokerGame extends BaseGame {
         return false;
     }
 
+    // ▼▼▼ 【新增】輔助函式：把 pokersolver 的牌 (T, s) 轉回我們用的格式 (10, ♠) ▼▼▼
+    _formatSolverCard(solverCard) {
+        const suitMap = { 's': '♠', 'h': '♥', 'd': '♦', 'c': '♣' };
+        const valueMap = { 'T': '10' }; // Solver 用 T 代表 10，我們要轉回 10
+        return {
+            suit: suitMap[solverCard.suit] || solverCard.suit,
+            value: valueMap[solverCard.value] || solverCard.value
+        };
+    }
+
     endGame(winner = null) {
         this.gameState = 'SHOWDOWN'; // 或是 ENDED
         this.gameStage = 'SHOWDOWN';
@@ -429,14 +439,15 @@ class PokerGame extends BaseGame {
                 p.chips += share;
                 
                 // 紀錄贏家資訊給前端
+                const bestFiveCards = hand.cards ? hand.cards.map(c => this._formatSolverCard(c)) : [];
+
                 result.winners.push({
                     id: p.id,
                     name: p.name,
                     profit: share,
-                    // 可以加傳牌型名稱 (例如 "Full House")，前端會很開心
-                    handTitle: hand.name,
-                    // handDescription: ... (這需要改 HandEvaluator 回傳更多資訊，先略過)
-                    handDetail: hand.descr
+                    handTitle: hand.name,   // e.g. "Full House"
+                    handDetail: hand.descr,
+                    winningCombination: bestFiveCards // e.g. [A♠, A♥, K♦, K♣, K♠]
                 });
                 console.log(`玩家 ${p.name} 贏得 ${share}`);
             });
