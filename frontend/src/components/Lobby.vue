@@ -43,8 +43,13 @@
               type="text" 
               placeholder="輸入你的名字..." 
               maxlength="10"
+              :class="{ 'input-error': nicknameError }"
               @keyup.enter="startGame"
             >
+
+            <div v-if="nicknameError" class="error-msg">
+              ⚠️ 請輸入暱稱才能開始！
+            </div>
           </div> 
           
           <div class="input-group">
@@ -67,12 +72,14 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 
 const nickname = ref('');
-// ▼▼▼ 【新增】預設選擇德州撲克 ▼▼▼
+// 預設選擇德州撲克
 const selectedGameMode = ref('poker'); 
 const emit = defineEmits(['select']);
+// 新增錯誤狀態變數
+const nicknameError = ref(false);
 
 // 角色清單
 const avatarList = [
@@ -91,14 +98,22 @@ const nextAvatar = () => currentIndex.value = (currentIndex.value + 1) % avatarL
 const prevAvatar = () => currentIndex.value = (currentIndex.value - 1 + avatarList.length) % avatarList.length;
 
 const startGame = () => {
-  if (!nickname.value) return alert("請輸入暱稱！");
-  
+  if (!nickname.value.trim()){
+    nicknameError.value = true;
+    return;
+  }
   sessionStorage.setItem('player_nickname', nickname.value); 
   sessionStorage.setItem('player_avatar', currentAvatar.value.src); 
   
   // 傳出選到的遊戲模式 (雖然目前只有 poker 能玩)
   emit('select', selectedGameMode.value);
 };
+
+watch(nickname, (newVal) => {
+  if (newVal) {
+    nicknameError.value = false;
+  }
+});
 </script>
 
 <style scoped>
@@ -225,5 +240,37 @@ input:focus, select:focus {
   .title-part::before { -webkit-text-stroke: 6px black; }
   .content-row { flex-direction: column; gap: 30px; }
   .main-card { padding: 30px 20px; width: 85%; }
+}
+
+/* 1. 輸入框錯誤狀態 (紅框 + 紅底) */
+/* 使用 !important 確保覆蓋原本的樣式 */
+.input-error {
+  border-color: #e74c3c !important;
+  background-color: #fceceb !important;
+  color: #c0392b !important;
+  animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; /* 觸發震動 */
+}
+
+/* 2. 錯誤文字訊息 */
+.error-msg {
+  color: #e74c3c;
+  font-size: 0.9rem;
+  font-weight: bold;
+  margin-top: 5px;
+  margin-left: 5px;
+  animation: fadeIn 0.3s;
+}
+
+/* 3. 震動動畫 Keyframes */
+@keyframes shake {
+  10%, 90% { transform: translate3d(-1px, 0, 0); }
+  20%, 80% { transform: translate3d(2px, 0, 0); }
+  30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+  40%, 60% { transform: translate3d(4px, 0, 0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>

@@ -60,7 +60,11 @@
     <div v-if="showPwdModal" class="modal-overlay">
       <div class="modal-box">
         <h3>🔒此房間需要密碼</h3>
-        <input v-model="inputPwd" type="text" placeholder="輸入密碼" class="modal-input">
+        <input v-model="inputPwd" type="text" placeholder="輸入密碼" class="modal-input" :class="{ 'input-error': passwordError }"
+            @keyup.enter="confirmJoin">
+        <div v-if="passwordError" class="error-msg">
+            ⚠️ {{ passwordError }}
+        </div>
         <div class="modal-btns">
             <button class="btn-cancel" @click="showPwdModal = false">取消</button>
             <button class="btn-confirm" @click="confirmJoin">加入</button>
@@ -72,7 +76,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import socket from '../services/socket';
 
 const emit = defineEmits(['join', 'back']);
@@ -85,12 +89,14 @@ const newRoomName = ref('');
 const newRoomPwd = ref('');
 const inputPwd = ref('');
 const selectedRoomId = ref(null);
+const selectedRoom = ref(null);
+const passwordError = ref('');
 
 const isRoomUnavailable = (room) => {
   return room.status === 'PLAYING' || room.players >= (room.maxPlayers || 6);
 };
 
-// ▼▼▼ 【新增】根據狀態回傳按鈕文字 ▼▼▼
+// 根據狀態回傳按鈕文字
 const getButtonText = (room) => {
   if (room.status === 'PLAYING') return '遊戲中';
   if (room.players >= (room.maxPlayers || 6)) return '客滿';
@@ -102,6 +108,11 @@ const fetchRooms = () => {
 };
 
 const selectRoom = (room) => {
+  if (isRoomUnavailable(room)) return; // 停用狀態不可點擊
+
+  selectedRoom.value = room;
+  passwordError.value = ''; // 重置錯誤
+
   if (room.hasPassword) {
     selectedRoomId.value = room.id;
     inputPwd.value = '';
@@ -115,8 +126,15 @@ const selectRoom = (room) => {
 const confirmJoin = () => {
   if (selectedRoomId.value) {
     emitJoin(selectedRoomId.value, inputPwd.value);
-    showPwdModal.value = false;
+    //showPwdModal.value = false;
   }
+};
+
+// 關閉視窗的輔助函式 (給取消按鈕用)
+const closePwdModal = () => {
+    showPwdModal.value = false;
+    passwordError.value = ''; // 清除錯誤訊息
+    inputPwd.value = '';
 };
 
 const emitJoin = (roomId, password) => {
@@ -159,6 +177,14 @@ onMounted(() => {
   socket.on('roomCreated', ({ roomId, password }) => {
     emitJoin(roomId, password);
   });
+
+  socket.on('errorMsg', (msg) => {
+      // 如果目前正在顯示密碼輸入框，就把錯誤顯示在框框下
+      if (showPwdModal.value) {
+          passwordError.value = msg; // 例如："密碼錯誤"
+      }
+  });
+
 });
 
 onUnmounted(() => {
@@ -166,8 +192,14 @@ onUnmounted(() => {
     socket.off('roomListUpdate');
     socket.off('roomCreated');
 });
-</script>
 
+watch(inputPwd, () => {
+    if (passwordError.value) {
+        passwordError.value = '';
+    }
+});
+
+</script>
 <style scoped>
 /* 容器樣式 */
 .room-list-container {
@@ -179,15 +211,17 @@ onUnmounted(() => {
 }
 
 /* 頂部欄 */
-.header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.header-bar { display: flex; justify-content: center; align-items: center; margin-bottom: 20px; position: relative; }
 .title { font-family: 'ZCOOL KuaiLe', sans-serif; font-size: 2.5rem; color: #3b4861; margin: 0; }
 
-.btn-back, .btn-refresh {
+.btn-back {
+    position: absolute;
+    left: 0;
     background: #f0f4f8; border: 2px solid #dae1e7; border-radius: 12px;
     padding: 10px 15px; cursor: pointer; font-weight: bold; color: #556070;
     transition: all 0.2s;
 }
-.btn-back:hover, .btn-refresh:hover { background: #e1e8ef; }
+.btn-back:hover { background: #e1e8ef; }
 
 /* 網格列表 */
 .grid-container {
@@ -268,7 +302,7 @@ onUnmounted(() => {
 .btn-confirm { background: #4facfe; color: white; border: none; padding: 12px 25px; border-radius: 10px; cursor: pointer; font-weight: bold; flex: 1; }
 .btn-cancel { background: #95a5a6; color: white; border: none; padding: 12px 25px; border-radius: 10px; cursor: pointer; font-weight: bold; flex: 1; }
 
-/* ▼▼▼ 【新增】停用狀態樣式 ▼▼▼ */
+/* 停用狀態樣式 */
 
 /* 1. 整個卡片變暗，滑鼠游標變禁止符號 */
 .room-card.card-disabled {
@@ -289,5 +323,37 @@ onUnmounted(() => {
   border-bottom: 5px solid #7f8c8d;
   cursor: not-allowed;
   transform: none; /* 防止點擊動畫 */
+}
+
+/* 錯誤訊息樣式 */
+.error-msg {
+    color: #e74c3c;
+    font-size: 0.9rem;
+    font-weight: bold;
+    margin-top: -10px; /* 讓它緊貼輸入框下方 */
+    margin-bottom: 10px;
+    animation: fadeIn 0.3s;
+}
+
+.input-error {
+    border-color: #e74c3c !important;
+    background-color: #fceceb;
+}
+
+/* 視窗震動動畫 (密碼錯誤時觸發) */
+.shake-anim {
+  animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+@keyframes shake {
+  10%, 90% { transform: translate3d(-1px, 0, 0); }
+  20%, 80% { transform: translate3d(2px, 0, 0); }
+  30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+  40%, 60% { transform: translate3d(4px, 0, 0); }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 </style>

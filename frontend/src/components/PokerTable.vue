@@ -545,7 +545,7 @@ const sendAction = (type, amount = 0) => {
 .card-slot { width: 50px; height: 70px; background: rgba(0,0,0,0.2); border-radius: 4px; border: 2px dashed rgba(255,255,255,0.3); display: flex; justify-content: center; align-items: center; }
 
 .card-img { width: 100%; height: 100%; object-fit: contain; }
-.pot-display { position: absolute; top: 65%; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.5); color: #f1c40f; padding: 4px 12px; border-radius: 12px; font-weight: bold; }
+.pot-display { position: absolute; top:28%; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.5); color: #f1c40f; padding: 4px 12px; border-radius: 12px; font-weight: bold; }
 .player-position { position: absolute; top: 50%; left: 50%; width: 0; height: 0; }
 .dealer-btn { position: absolute; top: -10px; right: -20px; width: 20px; height: 20px; background: white; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 12px; border: 2px solid black; }
 

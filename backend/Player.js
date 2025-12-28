@@ -10,7 +10,7 @@ class Player {
         this.name = name;
         this.socketId = socketId;
         
-        // ▼▼▼ 這裡會儲存真正傳進來的圖片 (例如 /avatars/6.jpg) ▼▼▼
+        // 儲存真正傳進來的圖片 (例如 /avatars/6.jpg)
         this.avatar = avatar; 
 
         // --- 2. 資產與手牌 ---
@@ -54,7 +54,7 @@ class Player {
             chips: this.chips,
             status: this.status,
             
-            // ▼▼▼ 記得把這個頭像資料傳給前端，前端才能顯示出來 ▼▼▼
+            //  把這個頭像資料傳給前端，前端才能顯示出來
             avatar: this.avatar, 
 
             roundBet: this.roundBet,

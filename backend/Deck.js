@@ -20,7 +20,7 @@ class Deck {
         this.shuffle();
     }
 
-    // Fisher-Yates 洗牌演算法
+    // 洗牌演算法
     shuffle() {
         for (let i = this.cards.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
