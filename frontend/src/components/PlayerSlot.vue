@@ -26,7 +26,7 @@
 
     <div class="hand-cards-slot">
         <template v-if="player.cards && player.cards.length > 0">
-            <img v-for="(card, i) in player.cards" :key="i" :src="getCardSrc(card)" class="mini-card-img"/>
+            <img v-for="(card, i) in player.cards" :key="i" :src="getCardSrc(card)" class="mini-card-img":class="{ 'winner-anim': isWinningHandCard(card) }"/>         
         </template>
 
         <template v-else-if="player.hasCards && player.status !== 'FOLDED'">
@@ -44,8 +44,6 @@
 </template>
 
 <script setup>
-defineProps(['player', 'actionFeedback']);
-
 // 圖片路徑轉換函式 (保持不變)
 const getCardSrc = (cardObj) => {
   if (!cardObj) return '';
@@ -54,6 +52,13 @@ const getCardSrc = (cardObj) => {
   const rank = valueMap[cardObj.value] || cardObj.value;
   const suit = suitMap[cardObj.suit];
   return `/cards/${suit}_${rank}.png`;
+};
+
+const props = defineProps(['player', 'actionFeedback', 'winningCardSet']);
+const isWinningHandCard = (card) => {
+    if (!card || !props.winningCardSet) return false;
+    const id = `${card.suit}_${card.value}`; // 產生跟 PokerTable 一樣的 ID
+    return props.winningCardSet.has(id);
 };
 </script>
 
@@ -184,4 +189,17 @@ const getCardSrc = (cardObj) => {
   0% { opacity: 0; transform: translateX(-50%) scale(0.5) translateY(20px); }
   100% { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); }
 }
+
+@keyframes slotCardJump {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-15px) scale(1.2); box-shadow: 0 0 10px #f1c40f; border: 1px solid #f1c40f; }
+  100% { transform: translateY(-15px) scale(1.2); box-shadow: 0 0 10px #f1c40f; border: 1px solid #f1c40f; }
+}
+
+.winner-anim {
+  animation: slotCardJump 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  z-index: 100;
+  position: relative; /* 確保 z-index 生效 */
+}
+
 </style>

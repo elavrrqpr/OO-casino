@@ -46,19 +46,20 @@ const selectGame = (type) => {
   }
 };
 
-const handleJoinRoom = ({ roomId, password }) => {
+const handleJoinRoom = ({ roomId, password}) => {
     // ▼▼▼ 【修正 1】記住房間 ID！ ▼▼▼
     currentRoomId.value = roomId; 
     
     const nickname = sessionStorage.getItem('player_nickname');
     const avatar = sessionStorage.getItem('player_avatar');
-
+    const character = sessionStorage.getItem('player_character');
     // 發送加入請求
     socket.emit('joinRoom', { 
         roomId, 
         nickname, 
         avatar: avatar || '/avatars/1.jpg',
-        password 
+        password ,
+        character: character || '林'
     });
 };
 

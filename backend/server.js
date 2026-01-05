@@ -3,103 +3,120 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
-
-// ▼▼▼ 引入 RoomManager，不再直接引用 PokerGame ▼▼▼
 const roomManager = require('./RoomManager');
 
 const app = express();
 const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
-const io = new Server(server, {
-    cors: { origin: "*", methods: ["GET", "POST"] }
-});
+// --- 共用廣播函數：更新房間狀態 ---
+const broadcastRoomState = (roomId, game) => {
+    io.to(roomId).emit('roomUpdated', {
+        players: game.players.map(p => p.getPublicData(game.gameState === 'SHOWDOWN')), 
+        gameState: game.gameState,
+        pot: game.pot,
+        communityCards: game.getPublicCommunityCards(),
+        currentTurn: game.currentTurnPlayerId,
+        hostId: game.hostId
+    });
+};
 
-// app.use ... (省略靜態檔案設定)
+// --- 共用廣播函數：處理遊戲結束 ---
+const handleGameEnd = (roomId, game, result) => {
+    // 1. 製作排行榜
+    const rankings = game.players
+        .map(p => ({
+            id: p.id,
+            name: p.name,
+            chips: p.chips,
+            isWinner: game.lastRoundWinners.some(w => w.id === p.id) 
+        }))
+        .sort((a, b) => b.chips - a.chips);
+            
+    // 2. 廣播結算資訊 (前端 4 秒後才會顯示視窗)
+    io.to(roomId).emit('gameEnded', { 
+        winners: game.lastRoundWinners, // 這裡面現在有 character 了
+        rankings: rankings,
+        newGameCountdown: 3 
+    });
+
+    // 3. 倒數後自動開始新局
+    setTimeout(() => {
+        const liveGame = roomManager.getGame(roomId);
+        if (liveGame) {
+            // 踢除破產玩家
+            const brokePlayers = liveGame.players.filter(p => p.chips <= 0);
+            brokePlayers.forEach(p => {
+                console.log(`💸 玩家 ${p.name} 破產，踢出房間`);
+                roomManager.leaveRoom(roomId, p.id);
+                io.to(p.id).emit('kicked', { msg: '您的籌碼已歸零，請重新加入遊戲！' });
+                const socketInfo = io.sockets.sockets.get(p.id);
+                if (socketInfo) socketInfo.leave(roomId);
+            });
+
+            if (!roomManager.getGame(roomId)) return; // 如果房間沒了就結束
+
+            console.log(`房間 ${roomId} 自動開始下一局...`);
+            liveGame.resetToLobby(); 
+
+            // 廣播更新 (變回 LOBBY)
+            broadcastRoomState(roomId, liveGame);
+            io.emit('roomListUpdate');
+        }
+    }, 5000); 
+};
+
 
 io.on('connection', (socket) => {
     console.log('✅ 玩家連線:', socket.id);
 
-    // --- 1. 取得房間列表 ---
     socket.on('getRooms', () => {
         socket.emit('roomList', roomManager.getPublicRoomList());
     });
 
-    // --- 2. 創建房間 ---
     socket.on('createRoom', ({ roomName, password, nickname, avatar }) => {
         const roomId = roomManager.createRoom({
-            roomName, 
-            password, 
-            hostName: nickname, 
-            hostId: socket.id
+            roomName, password, hostName: nickname, hostId: socket.id
         });
-
-        // 創建後，通知前端「自動加入」
-        // 前端收到 roomCreated 後，會自動發送 joinRoom 事件
         socket.emit('roomCreated', { roomId, password });
-        
-        // 廣播給所有人更新列表
         io.emit('roomListUpdate');
     });
 
-    // --- 3. 加入房間 ---
-    socket.on('joinRoom', ({ roomId, nickname, avatar, password }) => {
-        const result = roomManager.joinRoom(roomId, socket.id, nickname, avatar, password);
-
+    socket.on('joinRoom', ({ roomId, nickname, avatar, password, character}) => {
+        const result = roomManager.joinRoom(roomId, socket.id, nickname, avatar, password, character);
         if (!result.success) {
             socket.emit('errorMsg', result.msg);
             return;
         }
-
         const game = result.game;
         socket.join(roomId);
-        
-        // 通知自己成功
         socket.emit('joinSuccess', { roomId });
-
-        // 通知房間內其他人
-        io.to(roomId).emit('roomUpdated', {
-            players: game.players.map(p => p.getPublicData()), 
-            gameState: game.gameState,
-            currentTurn: game.currentTurnPlayerId,
-            hostId: game.hostId, // 前端依靠這個顯示開始按鈕
-            pot: game.pot,
-            communityCards: game.getPublicCommunityCards()
-        });
-
-        // 更新大廳列表 (因為人數變了)
+        
+        broadcastRoomState(roomId, game);
         io.emit('roomListUpdate');
     });
 
-    // --- 4. 遊戲開始 ---
     socket.on('startGame', (roomId) => {
         const game = roomManager.getGame(roomId);
         if (!game) return;
 
+        // ▼▼▼ 【關鍵修正】把廣播器綁定給遊戲，讓它自動跑時也能更新！ ▼▼▼
+        game.setCallbacks(
+            () => broadcastRoomState(roomId, game),          // 自動更新時呼叫
+            (result) => handleGameEnd(roomId, game, result)  // 自動結束時呼叫
+        );
+
         const result = game.manualStart(socket.id);
         if (result.success) {
             io.to(roomId).emit('gameStarted', { gameState: 'PLAYING' });
-            
-            // 發私有牌
             game.players.forEach(p => {
                 io.to(p.id).emit('receiveCards', { myCards: p.cards });
             });
-
-            // 更新公開資訊
-            io.to(roomId).emit('roomUpdated', {
-                players: game.players.map(p => p.getPublicData()),
-                gameState: game.gameState,
-                pot: game.pot,
-                communityCards: game.getPublicCommunityCards(),
-                currentTurn: game.currentTurnPlayerId,
-                hostId: game.hostId
-            });
-            
-            // 遊戲狀態改變，列表也要更新 (顯示遊戲中)
+            broadcastRoomState(roomId, game);
             io.emit('roomListUpdate');
         }
     });
 
-    // --- 5. 玩家動作 (下注等) ---
     socket.on('action', ({ roomId, type, amount }) => {
         const game = roomManager.getGame(roomId);
         if (!game) return;
@@ -107,92 +124,22 @@ io.on('connection', (socket) => {
         const result = game.handlePlayerAction(socket.id, type, amount);
         
         if (result.success) {
-            // 我們把 playerId, action(類型), val(金額) 傳給所有人
             io.to(roomId).emit('playerActed', {
                 playerId: socket.id,
                 action: result.action,
                 value: result.val
             });
-            // 1. 動作合法，廣播盤面更新
-            io.to(roomId).emit('roomUpdated', {
-                players: game.players.map(p => p.getPublicData(game.gameState === 'SHOWDOWN')), 
-                gameState: game.gameState,
-                pot: game.pot,
-                communityCards: game.getPublicCommunityCards(),
-                currentTurn: game.currentTurnPlayerId
-            });
             
-            // 2. 檢查是否進入結算 (Showdown)
+            // 廣播盤面
+            broadcastRoomState(roomId, game);
+            
+            // 如果剛好是由玩家動作觸發了結算 (例如最後一人 Fold)
             if (game.gameState === 'SHOWDOWN') {
-                
-                // 製作排行榜
-                const rankings = game.players
-                    .map(p => ({
-                        id: p.id,
-                        name: p.name,
-                        chips: p.chips,
-                        isWinner: game.lastRoundWinners.some(w => w.id === p.id) 
-                    }))
-                    .sort((a, b) => b.chips - a.chips);
-                     
-                // 廣播結算資訊
-                io.to(roomId).emit('gameEnded', { 
-                    winners: game.lastRoundWinners,
-                    rankings: rankings,
-                    newGameCountdown: 5 // 告訴前端倒數 5 秒
-                });
-
-                // --- 5 秒後自動開始新局 (包含踢人邏輯) ---
-                setTimeout(() => {
-                    // 重新從 Manager 獲取遊戲實例 (確保房間還活著)
-                    // 注意：這裡不能只用原本的 game 變數，因為如果房間被刪了，操作會出錯
-                    const liveGame = roomManager.getGame(roomId);
-
-                    if (liveGame) {
-                        // ▼▼▼ 【新增】踢除破產玩家邏輯 ▼▼▼
-                        // 1. 找出籌碼 <= 0 的玩家 (必須在 beginGame 之前做)
-                        const brokePlayers = liveGame.players.filter(p => p.chips <= 0);
-                        brokePlayers.forEach(p => {
-                            console.log(`💸 玩家 ${p.name} 破產，踢出房間`);
-                            
-                            // A. 呼叫 Manager 執行離開 (處理陣列移除、房主轉移、刪除空房)
-                            roomManager.leaveRoom(roomId, p.id);
-
-                            // B. 通知該玩家 (前端收到 kicked 事件要跳轉回大廳)
-                            io.to(p.id).emit('kicked', { msg: '您的籌碼已歸零，請重新加入遊戲！' });
-                            
-                            // C. 強制讓 Socket 離開頻道 (這樣他就收不到下一局的牌了)
-                            const socketInfo = io.sockets.sockets.get(p.id);
-                            if (socketInfo) socketInfo.leave(roomId);
-                        });
-
-                        // 踢完人後，再次檢查房間是否還存在 (如果所有人都破產被踢光了)
-                        if (!roomManager.getGame(roomId)) return;
-
-                        console.log(`房間 ${roomId} 自動開始下一局...`);
-                        
-                        // 1. 重置並開始新局 (破產的人已經不在 liveGame.players 裡了)
-                        liveGame.resetToLobby(); 
-
-                        // 廣播更新 (狀態變回 LOBBY)
-                        // 前端收到這個後，如果是房主會看到「開始按鈕」，閒家會看到「繼續/退出」
-                        io.to(roomId).emit('roomUpdated', {
-                            players: liveGame.players.map(p => p.getPublicData()),
-                            gameState: liveGame.gameState,
-                            pot: liveGame.pot,
-                            communityCards: [], 
-                            currentTurn: null,
-                            hostId: liveGame.hostId
-                        });
-                        
-                        // 更新大廳列表狀態 (變回等待中)
-                        io.emit('roomListUpdate');
-                    }
-                }, 10000); 
+                // 因為是手動觸發，game.lastRoundWinners 已經算好了
+                // 這裡我們只傳 null 進去，因為 handleGameEnd 會自己去讀 game.lastRoundWinners
+                handleGameEnd(roomId, game, null);
             }
-
         } else {
-            // 動作非法
             socket.emit('errorMsg', result.msg);
         }
     });
@@ -200,54 +147,28 @@ io.on('connection', (socket) => {
     socket.on('playerReady', (roomId) => {
         const game = roomManager.getGame(roomId);
         if (!game) return;
-
         const player = game.players.find(p => p.id === socket.id);
         if (player) {
-            player.isReady = true; // 標記為準備好
-
-            console.log(`玩家 ${player.name} 已準備就緒`);
-
-            // 廣播更新 (讓房主看到狀態打勾，按鈕變亮)
-            io.to(roomId).emit('roomUpdated', {
-                players: game.players.map(p => p.getPublicData()),
-                gameState: game.gameState,
-                pot: game.pot,
-                communityCards: [], 
-                currentTurn: null,
-                hostId: game.hostId
-            });
+            player.isReady = true; 
+            broadcastRoomState(roomId, game);
         }
     });
 
-    // --- 6. 斷線/離開 ---
     socket.on('disconnect', () => {
-        // 這裡需要遍歷找人，因為 socket.id 沒帶 roomId
-        // RoomManager 沒有反向查表，所以我們要遍歷 (效率較低但這階段夠用)
         for (const roomId in roomManager.rooms) {
             const game = roomManager.leaveRoom(roomId, socket.id);
             if (game) {
-                // 房間還在，通知剩餘玩家
-                io.to(roomId).emit('roomUpdated', {
-                    players: game.players.map(p => p.getPublicData()),
-                    gameState: game.gameState,
-                    hostId: game.hostId // 房主可能換人了
-                });
+                broadcastRoomState(roomId, game);
             }
-            // 無論房間是否還在，都要更新列表 (人數變少或房間消失)
             io.emit('roomListUpdate');
         }
     });
     
-    // 主動離開房間
     socket.on('leaveRoom', () => {
          for (const roomId in roomManager.rooms) {
             const game = roomManager.leaveRoom(roomId, socket.id);
             if (game) {
-                 io.to(roomId).emit('roomUpdated', {
-                    players: game.players.map(p => p.getPublicData()),
-                    gameState: game.gameState,
-                    hostId: game.hostId
-                });
+                 broadcastRoomState(roomId, game);
             }
          }
          io.emit('roomListUpdate');

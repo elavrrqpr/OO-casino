@@ -104,7 +104,7 @@ const startGame = () => {
   }
   sessionStorage.setItem('player_nickname', nickname.value); 
   sessionStorage.setItem('player_avatar', currentAvatar.value.src); 
-  
+  sessionStorage.setItem('player_character', currentAvatar.value.name);
   // 傳出選到的遊戲模式 (雖然目前只有 poker 能玩)
   emit('select', selectedGameMode.value);
 };

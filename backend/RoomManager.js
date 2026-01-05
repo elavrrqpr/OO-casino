@@ -31,7 +31,7 @@ class RoomManager {
         return roomId;
     }
 
-    joinRoom(roomId, playerSocketId, nickname, avatar, password) {
+    joinRoom(roomId, playerSocketId, nickname, avatar, password, character) {
         const game = this.rooms[roomId];
 
         if (!game) return { success: false, msg: '房間不存在' };
@@ -44,9 +44,9 @@ class RoomManager {
 
         // 建立玩家物件
         // 如果是第一個加入的，PokerGame 內部會自動設為 hostId
-        const newPlayer = new Player(playerSocketId, nickname, playerSocketId, 20000, avatar);
+        const newPlayer = new Player(playerSocketId, nickname, playerSocketId, 20000, avatar,character);
         game.addPlayer(newPlayer);
-
+        
         return { success: true, game };
     }
 

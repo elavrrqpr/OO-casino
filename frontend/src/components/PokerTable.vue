@@ -1,11 +1,15 @@
 <template>
   <div class="table-wrapper">
+    
+    <button class="btn-sound-toggle" @click="toggleGlobalMute">
+        {{ audioState.isGlobalMute ? '🔇' : '🔊' }}
+    </button>
     <transition name="pop-up">
       <div v-if="gameResult" class="victory-overlay">
         <div class="victory-modal">
           
           <div class="victory-header">
-            🎉 獲勝者 🎉
+            {{ (gameResult.winners && gameResult.winners.length > 1) ? '平手' : ' 贏家 ' }}
           </div>
 
           <div class="winners-list">
@@ -42,6 +46,8 @@
                     :key="'best-'+i" 
                     :src="getCardSrc(card)" 
                     class="result-card-img"
+                    :class="{ 'dimmed': isKicker(card, winner.winningCombination, winner.handTitle) }"
+                    :style="{ 'animation-delay': `${i * 0.1 + 0.3}s` }"
                   />
                 </div>
               </div>
@@ -137,6 +143,8 @@
             v-if="getCommunityCard(i)" 
             :src="getCardSrc(getCommunityCard(i))" 
             class="card-img"
+            :class="{ 'winner-anim': isWinningCardOnTable(getCommunityCard(i)) }"
+            :style="{ 'animation-delay': isWinningCardOnTable(getCommunityCard(i)) ? `${i * 0.1}s` : '0s' }"
           />
         </div>
       </div>
@@ -214,23 +222,25 @@ import { ref, computed, onMounted, onUnmounted, reactive, watch } from 'vue';
 import PlayerSlot from './PlayerSlot.vue'; 
 import socket from '../services/socket'; 
 
+// ▼▼▼ 【新增】引入聲音管理器 ▼▼▼
+import { playCharacterSound, toggleGlobalMute, audioState } from '../services/AudioManager';
+
 const props = defineProps(['roomData', 'roomId']);
 const emit = defineEmits(['leave']);
-const showContinueModal = ref(false); // 控制繼續遊玩視窗
-const justFinishedGame = ref(false);  // 標記是否剛打完一局
-const actionFeedbacks = reactive({}); // 用來存每個玩家的動作訊息 { 'player_id': { text: 'Call $100', type: 'call' } }
+const showContinueModal = ref(false); 
+const justFinishedGame = ref(false); 
+const actionFeedbacks = reactive({}); 
 
-// --- 狀態變數 ---
 const gameResult = ref(null);
 const raiseAmount = ref(0); 
 const showRaiseSlider = ref(false); 
 const myCards = ref([]);
 
-// 桌子尺寸監控
 const tableRef = ref(null);
 const tableRect = reactive({ width: 0, height: 0 });
+const winningCardSet = ref(new Set());
+const getCardId = (card) => `${card.suit}_${card.value}`;
 
-// --- 輔助函式 ---
 const updateTableSize = () => {
   if (tableRef.value) {
     tableRect.width = tableRef.value.offsetWidth;
@@ -253,10 +263,93 @@ const getWinnerCards = (winnerId) => {
   return player ? player.cards : [];
 };
 
+const isKicker = (card, all5Cards, handTitle) => {
+  if (!handTitle) return false;
+  const title = handTitle.toLowerCase();
+  const val = card.value; 
+  
+  // 1. 先統計「勝利5張牌」的點數分佈
+  const handCounts = {};
+  all5Cards.forEach(c => handCounts[c.value] = (handCounts[c.value] || 0) + 1);
+
+  // 2. 統計「公牌區」的點數分佈 (用來檢查核心是否在桌上)
+  const boardCounts = {};
+  if (props.roomData?.communityCards) {
+      props.roomData.communityCards.forEach(c => {
+          if(c) boardCounts[c.value] = (boardCounts[c.value] || 0) + 1;
+      });
+  }
+
+  // 輔助：檢查某個點數是否「完全由公牌提供」
+  const isFromBoard = (val, needed) => (boardCounts[val] || 0) >= needed;
+
+  // --- 開始判斷 ---
+
+  // 1. 四條: 還是維持變暗 (因為四條本身太搶眼了，踢腳通常不重要，除非公牌四條)
+  if (title.includes('four')) {
+      // 進階：如果公牌就有四條，那踢腳全亮；否則踢腳變暗
+      const quadRank = all5Cards.find(c => handCounts[c.value] >= 4).value;
+      if (isFromBoard(quadRank, 4)) return false; 
+      return handCounts[val] < 4; 
+  }
+
+  // 2. 葫蘆 / 順子 / 同花: 5張都是核心，全亮
+  if (title.includes('full house') || title.includes('straight') || title.includes('flush')) {
+      return false; 
+  }
+
+  // 3. 三條 (Three of a Kind)
+  if (title.includes('three')) {
+      if (handCounts[val] >= 3) return false; // 三條本體 -> 亮
+
+      // 踢腳判斷：如果桌上已經有三條 (公牌三條)，踢腳就很重要 -> 全亮
+      const tripRank = all5Cards.find(c => handCounts[c.value] >= 3).value;
+      if (isFromBoard(tripRank, 3)) return false;
+
+      return true; // 普通三條 -> 踢腳變暗
+  }
+
+  // 4. 兩對 (Two Pair) - 這是你最在意的！
+  if (title.includes('two pair')) {
+      if (handCounts[val] >= 2) return false; // 對子本體 -> 亮
+
+      // 踢腳判斷：找出這兩對的點數
+      const pairRanks = Object.keys(handCounts).filter(r => handCounts[r] >= 2);
+      
+      // 檢查是否「兩對都在公牌上」
+      const isBoardTwoPair = pairRanks.every(r => isFromBoard(r, 2));
+
+      if (isBoardTwoPair) return false; // 情況A：公牌兩對 -> 踢腳全亮 (因為踢腳是關鍵)
+      return true; // 情況B：手牌湊的 -> 踢腳變暗 (凸顯對子)
+  }
+
+  // 5. 一對 (Pair)
+  if (title.includes('pair')) {
+      if (handCounts[val] >= 2) return false; // 對子本體 -> 亮
+
+      // 踢腳判斷：如果桌上已經有一對 (公牌對子)，踢腳全亮
+      const pairRank = all5Cards.find(c => handCounts[c.value] >= 2).value;
+      if (isFromBoard(pairRank, 2)) return false;
+
+      return true; // 普通對子 -> 踢腳變暗
+  }
+
+  // 6. 高牌: 只亮最大那張
+  if (title.includes('high card')) {
+     return all5Cards.indexOf(card) > 0; 
+  }
+
+  return false;
+};
+
+const isWinningCardOnTable = (card) => {
+    if (!card) return false;
+    return winningCardSet.value.has(getCardId(card));
+};
+
 const handleContinue = () => {
     socket.emit('playerReady', props.roomId);
     showContinueModal.value = false;
-    // 關閉後，就會露出底下的 start-game-overlay (顯示「等待房主開始...」)
 };
 
 const allPlayersReady = computed(() => {
@@ -264,18 +357,33 @@ const allPlayersReady = computed(() => {
     return props.roomData.players.every(p => p.isReady);
 });
 
-// --- Socket 監聽 ---
 onMounted(() => {
   socket.on('receiveCards', (data) => myCards.value = data.myCards);
 
   socket.on('gameEnded', (data) => {
-    // 標記剛結束一局
     justFinishedGame.value = true;
-    // 2. 設定延遲 4 秒
+
+    winningCardSet.value.clear();
+    if (data.winners && data.winners.length > 0) {
+        // 把所有贏家的獲勝組合都加進去 (考慮平手 Split Pot 會有兩組)
+        data.winners.forEach(w => {
+            if (w.winningCombination) {
+                w.winningCombination.forEach(c => {
+                    winningCardSet.value.add(getCardId(c));
+                });
+            }
+        });
+    }
+
     setTimeout(() => {
-        // 4秒後，把資料填入，這會觸發 <div v-if="gameResult"> 的彈窗顯示
+        if (data.winners && data.winners.length > 0) {
+            const mainWinner = data.winners[0];
+            if (mainWinner.character) {
+                 playCharacterSound(mainWinner.character, 'win', mainWinner.id);
+            }
+        }
         gameResult.value = data; 
-    }, 4000);
+    }, 2000);
   });
 
   socket.on('gameStarted', () => {
@@ -285,28 +393,27 @@ onMounted(() => {
   });
 
   socket.on('roomUpdated', (data) => {
-    // 如果狀態變回 LOBBY，且剛打完一局
     if (data.gameState === 'LOBBY' && justFinishedGame.value) {
-        
-        // 關閉結算榜單
         gameResult.value = null;
-        // 清空手牌顯示
         myCards.value = [];
-
-        // 如果我是房主 -> 不用彈窗，直接顯示原本的「準備室」(start-game-overlay)
-        // 如果我是閒家 -> 顯示「繼續/退出」彈窗
         if (!isHost.value) {
             showContinueModal.value = true;
         }
-
-        justFinishedGame.value = false; // 重置標記
+        justFinishedGame.value = false; 
     }
   });
 
   socket.on('playerActed', (data) => {
     const { playerId, action, value } = data;
 
-    // 1. 決定要顯示什麼文字
+    // ▼▼▼ 【新增】動作語音觸發 ▼▼▼
+    const player = props.roomData?.players?.find(p => p.id === playerId);
+    if (player && player.character) {
+        // action 對應: 'fold', 'check', 'call', 'raise', 'allin'
+        playCharacterSound(player.character, action, playerId);
+    }
+    // ▲▲▲ 新增結束 ▲▲▲
+
     let text = '';
     if (action === 'fold') text = '棄牌';
     else if (action === 'check') text = '過牌';
@@ -314,11 +421,9 @@ onMounted(() => {
     else if (action === 'raise') text = `加注 $${value}`;
     else if (action === 'allin') text = 'ALL IN';
 
-    // 2. 設定到 reactive 物件中
     actionFeedbacks[playerId] = { text, action };
 
     setTimeout(() => {
-        // 為了避免蓋掉新的動作（如果手速很快），檢查一下是否還是同一個動作
         if (actionFeedbacks[playerId]?.text === text) {
             delete actionFeedbacks[playerId];
         }
@@ -336,7 +441,6 @@ onUnmounted(() => {
   socket.off('gameStarted');
 });
 
-// --- 計算屬性 ---
 const isHost = computed(() => props.roomData?.hostId === socket.id);
 const hostName = computed(() => {
   const host = props.roomData?.players?.find(p => p.id === props.roomData.hostId);
@@ -353,15 +457,13 @@ const minRaise = computed(() => Math.min(currentTableBet.value === 0 ? 200 : cur
 const maxRaise = computed(() => myPlayer.value ? myPlayer.value.chips + (myPlayer.value.roundBet || 0) : 0);
 const getCommunityCard = (index) => props.roomData?.communityCards?.[index] || null;
 
-// 座位旋轉 (排除自己)
 const rotatedPlayers = computed(() => {
   if (!props.roomData?.players) return [];
   const players = props.roomData.players;
   const myIndex = players.findIndex(p => p.id === socket.id);
-  if (myIndex === -1) return players; // 觀戰模式顯示所有人
+  if (myIndex === -1) return players; 
 
   const others = [];
-  // 從我左手邊的人開始，順時針抓取其他玩家
   for (let i = 1; i < players.length; i++) {
     const idx = (myIndex + i) % players.length;
     others.push(players[idx]);
@@ -369,73 +471,30 @@ const rotatedPlayers = computed(() => {
   return others;
 });
 
-// ▼▼▼ 固定座位表配置 ▼▼▼
-// 這裡定義的是「相對位置 multiplier」
-// X: -1(最左) ~ 0(中間) ~ 1(最右)
-// Y: -1(最上) ~ 0(中間) ~ 1(最下)
 const SEAT_LAYOUTS = {
-  // 總人數 2 人 (1 個對手) -> 坐在正對面
-  2: [
-    { x: 0, y: -1.5 } 
-  ],
-  // 總人數 3 人 (2 個對手) -> 左上、右上
-  3: [
-    { x: -1.15, y: -0.8 }, 
-    { x: 0.88, y: -0.8 }
-  ],
-  // 總人數 4 人 (3 個對手) -> 左邊、正上、右邊
-  4: [
-    { x: -1.2, y: -0.4 }, 
-    { x: -0.1, y: -1.5 }, 
-    { x: 0.92, y: -0.4 }
-  ],
-  // 總人數 5 人 (4 個對手) -> 左下、左上、右上、右下
-  5: [
-    { x: -1.1, y: 0.3 }, 
-    { x: -1, y: -1.2 }, 
-    { x: 0.7, y: -1.2 }, 
-    { x: 0.8, y: 0.3 }
-  ],
-  // 總人數 6 人 (5 個對手) -> 左下、左上、正上、右上、右下 (完美橢圓)
-  6: [
-    { x: -1, y: 0.4 },  // 左下
-    { x: -1.1, y: -0.9 }, // 左上
-    { x: -0.1, y: -1.37 },    // 正上
-    { x: 0.85, y: -0.9 },  // 右上
-    { x: 0.75, y: 0.4 }    // 右下
-  ]
+  2: [{ x: 0, y: -1.5 }],
+  3: [{ x: -1.15, y: -0.8 }, { x: 0.88, y: -0.8 }],
+  4: [{ x: -1.2, y: -0.4 }, { x: -0.1, y: -1.5 }, { x: 0.92, y: -0.4 }],
+  5: [{ x: -1.1, y: 0.3 }, { x: -1, y: -1.2 }, { x: 0.7, y: -1.2 }, { x: 0.8, y: 0.3 }],
+  6: [{ x: -1, y: 0.4 }, { x: -1.1, y: -0.9 }, { x: -0.1, y: -1.37 }, { x: 0.85, y: -0.9 }, { x: 0.75, y: 0.4 }]
 };
 
 const getSeatStyle = (index, totalOthers) => {
-  // totalOthers 是「其他玩家」的數量
-  // 我們要根據「總人數 (totalOthers + 1)」來查表
   const totalPlayers = totalOthers + 1;
   const layout = SEAT_LAYOUTS[totalPlayers];
-
-  // 防呆：如果還沒抓到桌子大小，或人數超出範圍
   if (tableRect.width === 0 || !layout || !layout[index]) return {};
-
   const w = tableRect.width;
   const h = tableRect.height;
-  
-  // 基礎半徑 (不加額外偏移，因為我們要在 layout 裡微調)
   const radiusX = w / 2;
   const radiusY = h / 2;
-
-  // 查表取得倍率
   const pos = layout[index]; 
-  
-  // 計算座標：倍率 * 半徑
-  // 這裡我故意不加 60px 的固定偏移，而是改用倍率 (1.1 或 1.2) 來控制離桌子的距離
   const x = pos.x * radiusX;
   const y = pos.y * radiusY;
-
   return { transform: `translate(${x}px, ${y}px)` };
 };
 
-// --- 按鈕動作 ---
 const startGame = () => {
-  console.log("嘗試開始遊戲，房間ID:", props.roomId); // 加個 log 方便除錯
+  console.log("嘗試開始遊戲，房間ID:", props.roomId); 
   socket.emit('startGame', props.roomId); 
 };
 const sendAction = (type, amount = 0) => {
@@ -450,23 +509,40 @@ const sendAction = (type, amount = 0) => {
 </script>
 
 <style scoped>
-/* 基本樣式 */
+/* ▼▼▼ 【新增】靜音按鈕樣式 ▼▼▼ */
+.btn-sound-toggle {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 2000;
+    width: 50px; 
+    height: 50px;
+    border-radius: 50%;
+    border: 3px solid #fff;
+    background: rgba(0,0,0,0.6);
+    color: white;
+    font-size: 1.5rem;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    transition: all 0.2s;
+}
+.btn-sound-toggle:hover {
+    background: #e74c3c;
+    transform: scale(1.1);
+}
+/* ▲▲▲ 新增結束 ▲▲▲ */
+
 .table-wrapper {
   position: relative; 
   width: 100vw; 
   height: 100vh;
   background-image: url('/tableback.jpg');
-  
-  /* 讓圖片填滿整個螢幕，不留白 */
   background-size: cover; 
-  
-  /* 圖片置中 */
   background-position: center;
-  
-  /* 防止圖片重複 (如果你想要它是像磁磚一樣重複拼貼，改成 repeat) */
   background-repeat: no-repeat;
-  /* --- 修改結束 --- */
-
   display: flex; 
   justify-content: center; 
   align-items: center;
@@ -474,11 +550,10 @@ const sendAction = (type, amount = 0) => {
 }
 .btn-back { position: absolute; top: 20px; left: 20px; z-index: 100; width: 40px; height: 40px; border-radius: 50%; border: none; font-size: 1.5rem; cursor: pointer; background: white; }
 
-/* ▼▼▼ 開始遊戲遮罩樣式 ▼▼▼ */
 .start-game-overlay {
   position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-  background: rgba(0, 0, 0, 0.7); /* 半透明黑底 */
-  z-index: 999; /* 蓋在最上面 */
+  background: rgba(0, 0, 0, 0.7); 
+  z-index: 999; 
   display: flex; justify-content: center; align-items: center;
 }
 .waiting-box {
@@ -525,20 +600,15 @@ const sendAction = (type, amount = 0) => {
 @keyframes spin { 100% { transform: rotate(360deg); } }
 
 .poker-table {
-  /* 使用 vw (視窗寬度) 讓桌子隨螢幕縮放 */
-  width: 70vw;           /* 桌子寬度佔螢幕 70% */
-  height: 35vw;          /* 高度是寬度的一半 (2:1 比例)，這樣最符合你的橢圓桌圖 */
-  max-width: 1000px;     /* 最大寬度限制，避免在大螢幕上大得嚇人 */
+  width: 70vw;           
+  height: 35vw;          
+  max-width: 1000px;     
   max-height: 500px;
-
-  /* 背景圖設定 */
   background-image: url('/images/table.png'); 
-  background-size: 100% 100%; /* 強制圖片填滿這個橢圓區域 */
+  background-size: 100% 100%; 
   background-repeat: no-repeat;
   background-position: center;
   position: relative;
-  
-  /* 讓桌子在畫面中置中 */
   margin: 0 auto;
 }
 .community-cards { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; gap: 8px; }
@@ -552,20 +622,16 @@ const sendAction = (type, amount = 0) => {
 .my-controls-area { position: absolute; bottom: 20px; display: flex; flex-direction: column; align-items: center; gap: 15px; width: 100%; }
 .my-hand { display: flex; gap: 10px; }
 .hand-card-img {
-  /* 原本可能是 80px，改成 110px 或更大，看你喜歡多大 */
   width: 110px; 
   height: auto;
-  border-radius: 6px; /* 圓角也稍微大一點 */
-  box-shadow: 0 5px 15px rgba(0,0,0,0.5); /* 陰影加深更有立體感 */
+  border-radius: 6px; 
+  box-shadow: 0 5px 15px rgba(0,0,0,0.5); 
   transition: transform 0.2s;
-  
-  /* 為了防止圖片被拉伸，保持比例 */
   object-fit: contain; 
 }
 
-/* 滑鼠移上去浮起來的效果可以保留，或加大 */
 .hand-card-img:hover {
-  transform: translateY(-20px) scale(1.05); /* 浮得更高，並稍微放大 */
+  transform: translateY(-20px) scale(1.05); 
 }
 
 .action-bar { display: flex; gap: 10px; background: rgba(255,255,255,0.1); padding: 10px 20px; border-radius: 30px; min-height: 60px; align-items: center; }
@@ -587,17 +653,17 @@ const sendAction = (type, amount = 0) => {
 
 .victory-overlay {
   position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-  background: rgba(0, 0, 0, 0.85); /* 深色背景讓中間更亮 */
-  z-index: 2000; /* 確保蓋在所有東西上面 */
+  background: rgba(0, 0, 0, 0.85); 
+  z-index: 2000; 
   display: flex; justify-content: center; align-items: center;
-  backdrop-filter: blur(5px); /* 背景模糊特效 */
+  backdrop-filter: blur(5px); 
 }
 
 .victory-modal {
   background: linear-gradient(135deg, #fff, #f0f0f0);
   padding: 40px;
   border-radius: 20px;
-  border: 5px solid #f1c40f; /* 金框 */
+  border: 5px solid #f1c40f; 
   box-shadow: 0 0 50px rgba(241, 196, 15, 0.6);
   text-align: center;
   min-width: 400px;
@@ -617,7 +683,7 @@ const sendAction = (type, amount = 0) => {
   border-radius: 15px;
   margin-bottom: 20px;
   border: 2px solid #34495e;
-  text-align: left; /* 改成靠左對齊比較整齊 */
+  text-align: left; 
 }
 
 .winner-header {
@@ -640,16 +706,15 @@ const sendAction = (type, amount = 0) => {
   display: flex; gap: 8px;
 }
 
-/* 獲勝組合加一點背景凸顯 */
 .highlight-bg {
-  background: rgba(241, 196, 15, 0.1); /* 淡淡的金黃色背景 */
+  background: rgba(241, 196, 15, 0.1); 
   padding: 8px;
   border-radius: 8px;
   border: 1px dashed rgba(241, 196, 15, 0.3);
 }
 
 .result-card-img {
-  width: 60px; /* 稍微縮小一點，不然 5 張牌會太寬 */
+  width: 60px; 
   height: auto;
   border-radius: 4px;
   box-shadow: 0 2px 5px rgba(0,0,0,0.3);
@@ -664,14 +729,12 @@ const sendAction = (type, amount = 0) => {
   color: #7f8c8d; font-weight: bold; margin-top: 10px;
 }
 
-/* 結算畫面簡單的彈出動畫 */
 .pop-up-enter-active, .pop-up-leave-active { transition: all 0.3s ease; }
 .pop-up-enter-from, .pop-up-leave-to { opacity: 0; transform: scale(0.8); }
 
-/* 繼續遊玩彈窗 */
 .continue-overlay {
   position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-  background: rgba(0, 0, 0, 0.85); z-index: 2500; /* 比準備室高 */
+  background: rgba(0, 0, 0, 0.85); z-index: 2500; 
   display: flex; justify-content: center; align-items: center;
 }
 
@@ -698,7 +761,6 @@ const sendAction = (type, amount = 0) => {
 .btn-quit:hover, .btn-continue:hover { transform: scale(1.05); }
 
 
-/* 中途加入的觀戰顯示 */
 .mid-game-status {
   margin: 20px 0;
   padding: 20px;
@@ -727,4 +789,60 @@ const sendAction = (type, amount = 0) => {
   50% { transform: translateY(-10px); }
   100% { transform: translateY(0px); }
 }
+/* 原本的圖片樣式保持不變 */
+.result-card-img {
+  width: 60px; 
+  height: auto;
+  border-radius: 4px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+  transition: all 0.3s; /* 加個過渡動畫 */
+}
+
+/* ▼▼▼ 新增：變暗樣式 ▼▼▼ */
+.result-card-img.dimmed {
+  opacity: 0.5;        /* 透明度 50% */
+  filter: grayscale(80%); /* 變成黑白 */
+  transform: scale(0.9);  /* 稍微縮小一點 */
+  box-shadow: none;       /* 去掉陰影 */
+}
+
+@keyframes cardUpFloat {
+  0% {
+    transform: translateY(0);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+  }
+  100% {
+    /* 往上移動 25px */
+    transform: translateY(-25px) scale(1.05); 
+    /* 加深陰影，製造懸浮感 */
+    box-shadow: 0 15px 30px rgba(0,0,0,0.5);
+    /* 確保邊框高亮更明顯 */
+    border: 2px solid #f1c40f;
+  }
+}
+
+/* 2. 套用到目標牌上 */
+/* 選擇器翻譯：在 .victory-modal 裡面的 .highlight-bg 區塊裡面的 .result-card-img，且它「不是」.dimmed 的時候 */
+.victory-modal .highlight-bg .result-card-img:not(.dimmed) {
+  /* 套用上面定義的動畫：時長0.5秒，緩出效果，結尾停留在最後狀態(forwards) */
+  animation: cardUpFloat 0.5s ease-out forwards;
+  
+  /* 初始狀態先往下藏一點點，讓它跳起來的感覺更強烈 (非必要，可自行調整) */
+  transform: translateY(5px);
+  /* 重要：因為有設定 animation-delay，在動畫開始前要保持初始狀態 */
+  animation-fill-mode: both; 
+}
+
+@keyframes tableCardJump {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-20px) scale(1.1); box-shadow: 0 0 15px #f1c40f; border: 2px solid #f1c40f; }
+  100% { transform: translateY(-20px) scale(1.1); box-shadow: 0 0 15px #f1c40f; border: 2px solid #f1c40f; }
+}
+
+.winner-anim {
+  /* 0.5秒跳上去，然後停在那邊 (forwards) */
+  animation: tableCardJump 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  z-index: 100; /* 確保浮起來時蓋過隔壁的牌 */
+}
+
 </style>

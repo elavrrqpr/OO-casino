@@ -3,7 +3,7 @@
 class Player {
     // 建構子：這裡的 = '/avatars/1.jpg' 只是「備胎」
     // 當 server.js 傳入正確的圖片路徑時，這個備胎就不會被使用
-    constructor(id, name, socketId, chips = 20000, avatar = '/avatars/1.jpg') {
+    constructor(id, name, socketId, chips = 20000, avatar = '/avatars/1.jpg', character) {
         
         // --- 1. 身分識別 ---
         this.id = id;
@@ -16,7 +16,7 @@ class Player {
         // --- 2. 資產與手牌 ---
         this.chips = chips;
         this.cards = [];
-        
+        this.character = character || '林';
         // --- 3. 該局遊戲狀態 ---
         this.status = 'WAITING'; 
         
@@ -56,7 +56,7 @@ class Player {
             
             //  把這個頭像資料傳給前端，前端才能顯示出來
             avatar: this.avatar, 
-
+            character: this.character,
             roundBet: this.roundBet,
             isDealer: this.isDealer,
             isTurn: this.isTurn,
