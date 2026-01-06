@@ -117,13 +117,13 @@ watch(nickname, (newVal) => {
 </script>
 
 <style scoped>
-/* --- 1. 整體佈局 --- */
+/* --- 整體佈局 --- */
 .gartic-body {
   display: flex; flex-direction: column; justify-content: center; align-items: center;
   height: 100vh; width: 100vw; position: relative; z-index: 1;
 }
 
-/* --- 2. 標題容器 --- */
+/* --- 標題容器 --- */
 .game-header { text-align: center; margin-bottom: 20px; z-index: 10; }
 
 .main-game-title-container {
@@ -186,7 +186,7 @@ watch(nickname, (newVal) => {
 .input-group { display: flex; flex-direction: column; gap: 8px; width: 100%; text-align: left; }
 label { font-weight: bold; color: #3b4861; font-size: 1rem; margin-left: 5px; }
 
-/* === 核心修改：統一樣式 === */
+/* === 統一樣式 === */
 /* 讓 input 和 select 長得一模一樣 */
 input, 
 select {
@@ -242,7 +242,7 @@ input:focus, select:focus {
   .main-card { padding: 30px 20px; width: 85%; }
 }
 
-/* 1. 輸入框錯誤狀態 (紅框 + 紅底) */
+/* 輸入框錯誤狀態 (紅框 + 紅底) */
 /* 使用 !important 確保覆蓋原本的樣式 */
 .input-error {
   border-color: #e74c3c !important;
@@ -251,7 +251,7 @@ input:focus, select:focus {
   animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; /* 觸發震動 */
 }
 
-/* 2. 錯誤文字訊息 */
+/* 錯誤文字訊息 */
 .error-msg {
   color: #e74c3c;
   font-size: 0.9rem;
@@ -261,7 +261,7 @@ input:focus, select:focus {
   animation: fadeIn 0.3s;
 }
 
-/* 3. 震動動畫 Keyframes */
+/* 震動動畫 Keyframes */
 @keyframes shake {
   10%, 90% { transform: translate3d(-1px, 0, 0); }
   20%, 80% { transform: translate3d(2px, 0, 0); }

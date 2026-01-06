@@ -5,7 +5,7 @@ class Player {
     // 當 server.js 傳入正確的圖片路徑時，這個備胎就不會被使用
     constructor(id, name, socketId, chips = 20000, avatar = '/avatars/1.jpg', character) {
         
-        // --- 1. 身分識別 ---
+        // --- 身分識別 ---
         this.id = id;
         this.name = name;
         this.socketId = socketId;
@@ -13,14 +13,14 @@ class Player {
         // 儲存真正傳進來的圖片 (例如 /avatars/6.jpg)
         this.avatar = avatar; 
 
-        // --- 2. 資產與手牌 ---
+        // --- 資產與手牌 ---
         this.chips = chips;
         this.cards = [];
         this.character = character || '林';
-        // --- 3. 該局遊戲狀態 ---
+        // --- 該局遊戲狀態 ---
         this.status = 'WAITING'; 
         
-        // --- 4. 下注相關數據 ---
+        // --- 下注相關數據 ---
         this.roundBet = 0;
         this.totalHandBet = 0;
         this.isDealer = false;

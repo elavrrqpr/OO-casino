@@ -222,7 +222,7 @@ import { ref, computed, onMounted, onUnmounted, reactive, watch } from 'vue';
 import PlayerSlot from './PlayerSlot.vue'; 
 import socket from '../services/socket'; 
 
-// ▼▼▼ 【新增】引入聲音管理器 ▼▼▼
+// 引入聲音管理器
 import { playCharacterSound, toggleGlobalMute, audioState } from '../services/AudioManager';
 
 const props = defineProps(['roomData', 'roomId']);
@@ -268,11 +268,11 @@ const isKicker = (card, all5Cards, handTitle) => {
   const title = handTitle.toLowerCase();
   const val = card.value; 
   
-  // 1. 先統計「勝利5張牌」的點數分佈
+  // 先統計「勝利5張牌」的點數分佈
   const handCounts = {};
   all5Cards.forEach(c => handCounts[c.value] = (handCounts[c.value] || 0) + 1);
 
-  // 2. 統計「公牌區」的點數分佈 (用來檢查核心是否在桌上)
+  // 統計「公牌區」的點數分佈 (用來檢查核心是否在桌上)
   const boardCounts = {};
   if (props.roomData?.communityCards) {
       props.roomData.communityCards.forEach(c => {
@@ -280,14 +280,14 @@ const isKicker = (card, all5Cards, handTitle) => {
       });
   }
 
-  // 輔助：檢查某個點數是否「完全由公牌提供」
+  // 檢查某個點數是否「完全由公牌提供」
   const isFromBoard = (val, needed) => (boardCounts[val] || 0) >= needed;
 
   // --- 開始判斷 ---
 
   // 1. 四條: 還是維持變暗 (因為四條本身太搶眼了，踢腳通常不重要，除非公牌四條)
   if (title.includes('four')) {
-      // 進階：如果公牌就有四條，那踢腳全亮；否則踢腳變暗
+      // 如果公牌就有四條，那踢腳全亮；否則踢腳變暗
       const quadRank = all5Cards.find(c => handCounts[c.value] >= 4).value;
       if (isFromBoard(quadRank, 4)) return false; 
       return handCounts[val] < 4; 
@@ -302,14 +302,14 @@ const isKicker = (card, all5Cards, handTitle) => {
   if (title.includes('three')) {
       if (handCounts[val] >= 3) return false; // 三條本體 -> 亮
 
-      // 踢腳判斷：如果桌上已經有三條 (公牌三條)，踢腳就很重要 -> 全亮
+      // 如果桌上已經有三條 (公牌三條)，踢腳就很重要 -> 全亮
       const tripRank = all5Cards.find(c => handCounts[c.value] >= 3).value;
       if (isFromBoard(tripRank, 3)) return false;
 
       return true; // 普通三條 -> 踢腳變暗
   }
 
-  // 4. 兩對 (Two Pair) - 這是你最在意的！
+  // 4. 兩對 (Two Pair)
   if (title.includes('two pair')) {
       if (handCounts[val] >= 2) return false; // 對子本體 -> 亮
 
@@ -323,7 +323,7 @@ const isKicker = (card, all5Cards, handTitle) => {
       return true; // 情況B：手牌湊的 -> 踢腳變暗 (凸顯對子)
   }
 
-  // 5. 一對 (Pair)
+  // 一對 (Pair)
   if (title.includes('pair')) {
       if (handCounts[val] >= 2) return false; // 對子本體 -> 亮
 
@@ -334,7 +334,7 @@ const isKicker = (card, all5Cards, handTitle) => {
       return true; // 普通對子 -> 踢腳變暗
   }
 
-  // 6. 高牌: 只亮最大那張
+  // 高牌: 只亮最大那張
   if (title.includes('high card')) {
      return all5Cards.indexOf(card) > 0; 
   }
@@ -406,13 +406,13 @@ onMounted(() => {
   socket.on('playerActed', (data) => {
     const { playerId, action, value } = data;
 
-    // ▼▼▼ 【新增】動作語音觸發 ▼▼▼
+    // 動作語音觸發
     const player = props.roomData?.players?.find(p => p.id === playerId);
     if (player && player.character) {
         // action 對應: 'fold', 'check', 'call', 'raise', 'allin'
         playCharacterSound(player.character, action, playerId);
     }
-    // ▲▲▲ 新增結束 ▲▲▲
+
 
     let text = '';
     if (action === 'fold') text = '棄牌';
@@ -509,7 +509,7 @@ const sendAction = (type, amount = 0) => {
 </script>
 
 <style scoped>
-/* ▼▼▼ 【新增】靜音按鈕樣式 ▼▼▼ */
+/* 靜音按鈕樣式 */
 .btn-sound-toggle {
     position: absolute;
     top: 20px;
@@ -533,7 +533,6 @@ const sendAction = (type, amount = 0) => {
     background: #e74c3c;
     transform: scale(1.1);
 }
-/* ▲▲▲ 新增結束 ▲▲▲ */
 
 .table-wrapper {
   position: relative; 
@@ -693,6 +692,7 @@ const sendAction = (type, amount = 0) => {
 
 .winner-name { color: white; font-size: 1.5rem; font-weight: bold; }
 .win-amount { color: #f1c40f; font-size: 1.5rem; font-weight: 900; margin-left: 10px;}
+.hand-type-badge { background: #f1c40f; color: white; padding: 5px 10px; border-radius: 10px; font-size: 0.8rem; font-weight: bold; }
 
 .card-section {
   margin-top: 10px;
@@ -798,7 +798,7 @@ const sendAction = (type, amount = 0) => {
   transition: all 0.3s; /* 加個過渡動畫 */
 }
 
-/* ▼▼▼ 新增：變暗樣式 ▼▼▼ */
+/* 變暗樣式 */
 .result-card-img.dimmed {
   opacity: 0.5;        /* 透明度 50% */
   filter: grayscale(80%); /* 變成黑白 */
@@ -821,7 +821,7 @@ const sendAction = (type, amount = 0) => {
   }
 }
 
-/* 2. 套用到目標牌上 */
+/* 套用到目標牌上 */
 /* 選擇器翻譯：在 .victory-modal 裡面的 .highlight-bg 區塊裡面的 .result-card-img，且它「不是」.dimmed 的時候 */
 .victory-modal .highlight-bg .result-card-img:not(.dimmed) {
   /* 套用上面定義的動畫：時長0.5秒，緩出效果，結尾停留在最後狀態(forwards) */
@@ -829,7 +829,7 @@ const sendAction = (type, amount = 0) => {
   
   /* 初始狀態先往下藏一點點，讓它跳起來的感覺更強烈 (非必要，可自行調整) */
   transform: translateY(5px);
-  /* 重要：因為有設定 animation-delay，在動畫開始前要保持初始狀態 */
+  /* 因為有設定 animation-delay，在動畫開始前要保持初始狀態 */
   animation-fill-mode: both; 
 }
 
@@ -840,7 +840,7 @@ const sendAction = (type, amount = 0) => {
 }
 
 .winner-anim {
-  /* 0.5秒跳上去，然後停在那邊 (forwards) */
+  /* 0.5秒跳上去，然後停在那邊 */
   animation: tableCardJump 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
   z-index: 100; /* 確保浮起來時蓋過隔壁的牌 */
 }

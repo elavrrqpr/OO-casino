@@ -9,7 +9,6 @@ class HandEvaluator {
         const activePlayers = players.filter(p => p.status !== 'FOLDED' && p.status !== 'SIT_OUT');
         
         if (activePlayers.length === 0) return [];
-        //if (activePlayers.length === 1) return activePlayers; // 只剩一人不用比
 
         // 2. 準備給 pokersolver 的資料
         const solvedHands = activePlayers.map(player => {
@@ -35,8 +34,8 @@ class HandEvaluator {
         return winningHands;
     }
 
-    // --- 輔助：格式轉換 ---
-    // 將你的 { suit: '♠', value: '10' } 轉成 'Ts' (Ten of Spades)
+    // --- 格式轉換 ---
+    // 將 { suit: '♠', value: '10' } 轉成 'Ts' (Ten of Spades)
     static _convertCardToString(card) {
         const suitMap = {
             '♠': 's', // Spades
@@ -46,7 +45,7 @@ class HandEvaluator {
         };
 
         const valueMap = {
-            '10': 'T', // 套件通常用 T 代表 10
+            '10': 'T', // T 代表 10
             'J': 'J',
             'Q': 'Q',
             'K': 'K',

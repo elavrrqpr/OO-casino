@@ -100,7 +100,7 @@ io.on('connection', (socket) => {
         const game = roomManager.getGame(roomId);
         if (!game) return;
 
-        // ▼▼▼ 【關鍵修正】把廣播器綁定給遊戲，讓它自動跑時也能更新！ ▼▼▼
+        // 把廣播器綁定給遊戲，讓它自動跑時也能更新
         game.setCallbacks(
             () => broadcastRoomState(roomId, game),          // 自動更新時呼叫
             (result) => handleGameEnd(roomId, game, result)  // 自動結束時呼叫
@@ -136,7 +136,7 @@ io.on('connection', (socket) => {
             // 如果剛好是由玩家動作觸發了結算 (例如最後一人 Fold)
             if (game.gameState === 'SHOWDOWN') {
                 // 因為是手動觸發，game.lastRoundWinners 已經算好了
-                // 這裡我們只傳 null 進去，因為 handleGameEnd 會自己去讀 game.lastRoundWinners
+                // 這裡只傳 null 進去，因為 handleGameEnd 會自己去讀 game.lastRoundWinners
                 handleGameEnd(roomId, game, null);
             }
         } else {

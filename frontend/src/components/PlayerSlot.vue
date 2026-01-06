@@ -44,7 +44,7 @@
 </template>
 
 <script setup>
-// 圖片路徑轉換函式 (保持不變)
+// 圖片路徑轉換函式
 const getCardSrc = (cardObj) => {
   if (!cardObj) return '';
   const suitMap = { '♠': 'spade', '♥': 'heart', '♦': 'diamond', '♣': 'club' };
@@ -120,7 +120,7 @@ const isWinningHandCard = (card) => {
 }
 .crown { position: absolute; top: -12px; left: -10px; font-size: 24px; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
 
-/* --- 2. 資訊面板樣式 (參考圖風格) --- */
+/* --- 資訊面板樣式 --- */
 .info-panel {
   background: #212121; /* 極深黑色背景 */
   width: 100%;
@@ -145,7 +145,7 @@ const isWinningHandCard = (card) => {
 .currency { color: #aaa; font-size: 0.8rem; margin-right: 2px;}
 .allin-text { color: #e74c3c; font-weight: 900; letter-spacing: 1px; }
 
-/* --- 3. 手牌區域 --- */
+/* --- 手牌區域 --- */
 .hand-cards-slot { display: flex; gap: 4px; margin-top: 8px; height: 40px; justify-content: center; align-items: center; }
 .mini-card-img { width: 28px; height: auto; border-radius: 3px; box-shadow: 0 2px 4px rgba(0,0,0,0.4); }
 

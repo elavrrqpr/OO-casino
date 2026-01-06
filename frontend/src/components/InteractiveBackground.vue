@@ -123,7 +123,7 @@ onUnmounted(() => {
   z-index: -1;
   overflow: hidden;
   
-  /* 【修改 2】這裡就是控制顏色的地方！ */
+  /* 這裡是控制顏色的地方 */
   /* Gartic 的經典藍色 */
   background-color: #0066FF; 
 }
@@ -133,12 +133,12 @@ onUnmounted(() => {
   top: 0; left: 0;
   width: 100%; height: 100%;
   
-  /* 你的圖片 */
+  /* 圖片 */
   background-image: url('/poker.png'); 
   background-repeat: repeat;
   background-size: 400px;
   
-  /* 如果你的圖案是黑色的，用這個混合模式會讓它融入藍色 */
+  /* 如果圖案是黑色的，這個混合模式會讓它融入藍色 */
   mix-blend-mode: multiply; 
   opacity: 0.3; /* 讓圖案淡淡的 */
 }

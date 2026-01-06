@@ -126,7 +126,6 @@ const selectRoom = (room) => {
 const confirmJoin = () => {
   if (selectedRoomId.value) {
     emitJoin(selectedRoomId.value, inputPwd.value);
-    //showPwdModal.value = false;
   }
 };
 
@@ -253,7 +252,7 @@ watch(inputPwd, () => {
     border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: auto;
 }
 
-/* ▼▼▼ 【修改】成這樣 ▼▼▼ */
+
 .empty-msg {
   position: absolute;      /* 絕對定位，無視網格 */
   top: 50%;                /* 頂部推到 50% */
@@ -304,7 +303,7 @@ watch(inputPwd, () => {
 
 /* 停用狀態樣式 */
 
-/* 1. 整個卡片變暗，滑鼠游標變禁止符號 */
+/* 整個卡片變暗，滑鼠游標變禁止符號 */
 .room-card.card-disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -317,7 +316,7 @@ watch(inputPwd, () => {
   box-shadow: 0 5px 15px rgba(0,0,0,0.1); /* 維持原本的影子，不要變大 */
 }
 
-/* 2. 按鈕變灰 */
+/* 按鈕變灰 */
 .btn-join:disabled {
   background: #95a5a6;
   border-bottom: 5px solid #7f8c8d;

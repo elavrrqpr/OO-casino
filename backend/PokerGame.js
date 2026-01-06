@@ -24,12 +24,12 @@ class PokerGame extends BaseGame {
         this.gameStage = 'LOBBY'; 
         this.hostId = null;
 
-        // ▼▼▼ 新增：用來存放外部傳進來的廣播功能 ▼▼▼
+        // 用來存放外部傳進來的廣播功能
         this.onAutoUpdate = null;   // 當階段改變時 (發牌)
         this.onAutoGameEnd = null;  // 當遊戲結束時
     }
     
-    // ▼▼▼ 新增：設定回調函數的方法 ▼▼▼
+    // 設定回調函數的方法
     setCallbacks(onUpdate, onGameEnd) {
         this.onAutoUpdate = onUpdate;
         this.onAutoGameEnd = onGameEnd;
@@ -253,18 +253,18 @@ class PokerGame extends BaseGame {
         this._updateTurnStatus();
         console.log(`--- 進入階段: ${this.gameStage} ---`);
 
-        // ▼▼▼ 【All-in 自動導航邏輯】 ▼▼▼
+        // All-in 自動導航邏輯
         const activePlayersCount = this.players.filter(p => p.status === 'ACTIVE').length;
         if (activePlayersCount < 2) {
             console.log("⚡ All-in 自動快轉中...");
             this.currentTurnIndex = -1; // 隱藏按鈕
             
-            // 1. 馬上通知前端更新 (讓按鈕消失，讓牌翻出來)
+            // 馬上通知前端更新 (讓按鈕消失，讓牌翻出來)
             if (this.onAutoUpdate) this.onAutoUpdate();
 
             setTimeout(() => {
                 this.nextStage();
-                // 2. 階段切換後，再次通知前端 (除非已經結束了)
+                // 階段切換後，再次通知前端 (除非已經結束了)
                 if (this.gameStage !== 'SHOWDOWN' && this.onAutoUpdate) {
                     this.onAutoUpdate();
                 }
